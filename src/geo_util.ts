@@ -116,24 +116,34 @@ export const getGradient = async (pixelCoord: PixelCoord, tileCache?: TileCache)
   const fy = Math.floor(pixelCoord.y)
 
   if ((pixelCoord.x - fx) + (pixelCoord.y - fy) < 1) {
-    const [nwElev, neElev, swElev] = await Promise.all([
-      getElevation({ x: fx, y: fy, z: pixelCoord.z }, tileCache),
-      getElevation({ x: fx + 1, y: fy, z: pixelCoord.z }, tileCache),
-      getElevation({ x: fx, y: fy + 1, z: pixelCoord.z }, tileCache),
-    ])
-    return {
-      dx: neElev - nwElev,
-      dy: swElev - nwElev,
+    try {
+      const [nwElev, neElev, swElev] = await Promise.all([
+        getElevation({ x: fx, y: fy, z: pixelCoord.z }, tileCache),
+        getElevation({ x: fx + 1, y: fy, z: pixelCoord.z }, tileCache),
+        getElevation({ x: fx, y: fy + 1, z: pixelCoord.z }, tileCache),
+      ])
+      return {
+        dx: neElev - nwElev,
+        dy: swElev - nwElev,
+      }
+    } catch (e) {
+      console.error(e)
+      return { dx: 0, dy: 0 }
     }
   } else {
-    const [neElev, swElev, seElev] = await Promise.all([
-      getElevation({ x: fx + 1, y: fy, z: pixelCoord.z }, tileCache),
-      getElevation({ x: fx, y: fy + 1, z: pixelCoord.z }, tileCache),
-      getElevation({ x: fx + 1, y: fy + 1, z: pixelCoord.z }, tileCache),
-    ])
-    return {
-      dx: seElev - swElev,
-      dy: seElev - neElev,
+    try {
+      const [neElev, swElev, seElev] = await Promise.all([
+        getElevation({ x: fx + 1, y: fy, z: pixelCoord.z }, tileCache),
+        getElevation({ x: fx, y: fy + 1, z: pixelCoord.z }, tileCache),
+        getElevation({ x: fx + 1, y: fy + 1, z: pixelCoord.z }, tileCache),
+      ])
+      return {
+        dx: seElev - swElev,
+        dy: seElev - neElev,
+      }
+    } catch (e) {
+      console.error(e)
+      return { dx: 0, dy: 0 }
     }
   }
 };

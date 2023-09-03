@@ -1,10 +1,12 @@
 import { useEffect, useState, useRef } from 'react'
 import mapboxgl, { MapboxOptions } from 'mapbox-gl'
+import { interpolatePlasma } from 'd3-scale-chromatic'
 import { IconButton } from '@chakra-ui/react'
 import { Icon } from '@chakra-ui/react'
 import { FaPlay } from 'react-icons/fa'
 import './App.css'
 import { LngLat, GradientDescentExecutor } from './geo_util'
+import { createColorStopsFromInterpolateFunc } from './color_util'
 
 const options: MapboxOptions = {
   accessToken: import.meta.env.VITE_MAPBOX_TOKEN,
@@ -19,7 +21,7 @@ const options: MapboxOptions = {
 const gradientDescentOptions = {
   zoom: 15,
   epsilon: 1,
-  maxStep: 500,
+  maxStep: 1000,
 }
 
 type Trajectory = {
@@ -75,57 +77,54 @@ function App() {
 
   // Update trajectory layer on trajectories change
   useEffect(() => {
-    // Add or update GeoJSON source
-    const sourceId = `trajectories-source`
-    const source = map?.getSource(sourceId);
-    if (!source) {
-      map?.addSource(sourceId, {
-        type: 'geojson',
-        data: {
-          type: 'FeatureCollection',
-          features: trajectories.map(traj => ({
-            type: 'Feature',
-            geometry: {
-              type: 'LineString',
-              coordinates: traj.history.map(lngLat => [lngLat.lng, lngLat.lat]),
-            },
-            properties: {
-              id: traj.id,
-            },
-          }))
-        }
-      })
-    } else {
-      if (source.type !== 'geojson') return;
-      source.setData({
+    trajectories.forEach(traj => {
+      // Add or update GeoJSON source
+      const sourceId = `trajectory-source-${traj.id}`
+      const source = map?.getSource(sourceId);
+      const geoJsonData: GeoJSON.FeatureCollection = {
         type: 'FeatureCollection',
-        features: trajectories.map(traj => ({
+        features: traj.history.slice(0, traj.history.length - 1).map((pos, i) => ({
           type: 'Feature',
           geometry: {
             type: 'LineString',
-            coordinates: traj.history.map(lngLat => [lngLat.lng, lngLat.lat]),
+            coordinates: [[pos.lng, pos.lat], [traj.history[i + 1]?.lng, traj.history[i + 1]?.lat]],
           },
           properties: {
             id: traj.id,
+            idx: i,
+            idx_rate: i / traj.history.length,
           },
-        }))
-      })
-    }
-    // Add layer if not exists
-    const layerId = `trajectories-layer`
-    const layer = map?.getLayer(layerId)
-    if (!layer) {
-      map?.addLayer({
-        id: layerId,
-        type: 'line',
-        source: sourceId,
-        paint: {
-          'line-color': '#ff0000',
-          'line-width': 5,
-          'line-opacity': 0.8,
-        },
-      })
-    }
+        })),
+      }
+      if (!source) {
+        map?.addSource(sourceId, { type: 'geojson', data: geoJsonData})
+      } else {
+        if (source.type !== 'geojson') return;
+        source.setData(geoJsonData)
+      }
+
+      // Add layer if not exists
+      const layerId = `trajectory-layer-${traj.id}`
+      const layer = map?.getLayer(layerId)
+      if (!layer) {
+        const colorStops = createColorStopsFromInterpolateFunc(interpolatePlasma, 1, true)
+        map?.addLayer({
+          id: layerId,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-width': 3,
+            'line-opacity': 0.8,
+            'line-color': [
+              'interpolate-hcl',
+              ['linear'],
+              ['get', 'idx_rate'],
+              ...colorStops,
+            ],
+          },
+        })
+      }
+    })
   }, [trajectories])
 
   const handlePlay = async () => {
