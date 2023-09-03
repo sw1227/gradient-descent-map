@@ -16,9 +16,11 @@ const options: MapboxOptions = {
 }
 
 // Gradient descent options
-const zoom = 15
-const epsilon = 20
-const maxStep = 100
+const gradientDescentOptions = {
+  zoom: 15,
+  epsilon: 1,
+  maxStep: 100,
+}
 
 type Trajectory = {
   id: string
@@ -130,10 +132,11 @@ function App() {
     if(trajectories.length < 1 || !map) return
 
     const execute = async (trajectory: Trajectory) => {
-      let position: PixelCoord = lngLatToPixel(trajectory.start, zoom)
+      const lastPosition = trajectory.history[trajectory.history.length - 1]
+      let position: PixelCoord = lngLatToPixel(lastPosition, gradientDescentOptions.zoom)
 
-      for (let i = 0; i < maxStep; i++) {
-        position = await gradientDescent(position, epsilon)
+      for (let i = 0; i < gradientDescentOptions.maxStep; i++) {
+        position = await gradientDescent(position, gradientDescentOptions.epsilon)
         const lngLat = pixelToLngLat(position)
         setTrajectories(prevTrajectories => prevTrajectories.map(traj => {
           if (traj.id === trajectory.id) {
