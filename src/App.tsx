@@ -18,7 +18,7 @@ const options: MapboxOptions = {
 // Gradient descent options
 const zoom = 15
 const epsilon = 20
-const maxStep = 20
+const maxStep = 100
 
 type Trajectory = {
   id: string
@@ -71,6 +71,61 @@ function App() {
     setMap(map)
   }, [])
 
+  // Update trajectory layer on trajectories change
+  useEffect(() => {
+    // Add or update GeoJSON source
+    const sourceId = `trajectories-source`
+    const source = map?.getSource(sourceId);
+    if (!source) {
+      map?.addSource(sourceId, {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: trajectories.map(traj => ({
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: traj.history.map(lngLat => [lngLat.lng, lngLat.lat]),
+            },
+            properties: {
+              id: traj.id,
+            },
+          }))
+        }
+      })
+    } else {
+      if (source.type !== 'geojson') return;
+      source.setData({
+        type: 'FeatureCollection',
+        features: trajectories.map(traj => ({
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: traj.history.map(lngLat => [lngLat.lng, lngLat.lat]),
+          },
+          properties: {
+            id: traj.id,
+          },
+        }))
+      })
+    }
+    // Add layer if not exists
+    const layerId = `trajectories-layer`
+    const layer = map?.getLayer(layerId)
+    if (!layer) {
+      map?.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        paint: {
+          'line-color': '#ff0000',
+          'line-width': 5,
+          'line-opacity': 0.8,
+        },
+      })
+    }
+  }, [trajectories])
+
   const handlePlay = async () => {
     if(trajectories.length < 1 || !map) return
 
@@ -89,9 +144,6 @@ function App() {
           }
           return traj
         }))
-        const marker = new mapboxgl.Marker()
-          .setLngLat(lngLat)
-          .addTo(map);
       }
     }
 
