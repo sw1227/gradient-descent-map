@@ -1,63 +1,122 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import mapboxgl, { MapboxOptions } from 'mapbox-gl'
+import { IconButton } from '@chakra-ui/react'
+import { Icon } from '@chakra-ui/react'
+import { FaPlay } from 'react-icons/fa'
 import './App.css'
-import { lngLatToPixel, gradientDescent, PixelCoord, pixelToLngLat } from './geo_util'
+import { lngLatToPixel, gradientDescent, PixelCoord, pixelToLngLat, LngLat } from './geo_util'
 
 const options: MapboxOptions = {
   accessToken: import.meta.env.VITE_MAPBOX_TOKEN,
   container: 'mapbox-map',
   style: 'mapbox://styles/sw1227/ckqyzf3tm1s0v17rv3rnaxgxm',
   localIdeographFontFamily: "'Noto Sans', 'Noto Sans CJK SC', sans-serif",
-  center: [139.7, 35.7],
+  center: [138.731, 35.363],
   zoom: 12
 }
 
-const useMapboxMap = (options: MapboxOptions) => {
+// Gradient descent options
+const zoom = 15
+const epsilon = 20
+const maxStep = 20
+
+type Trajectory = {
+  id: string
+  start: LngLat
+  history: LngLat[]
+}
+
+function App() {
   const [map, setMap] = useState<mapboxgl.Map>()
 
-  // Create a map instance on initial render
+  const [running, setRunning] = useState(false)
+  const [trajectories, setTrajectories] = useState<Trajectory[]>([])
+  const trajectoriesRef = useRef(trajectories)
+  // Update ref to the latest trajectories value
+  useEffect(() => {
+    trajectoriesRef.current = trajectories;
+  }, [trajectories])
+
+  // Initialize map on initial render
   useEffect(() => {
     const map = new mapboxgl.Map(options)
-
-    // Add click event listener to the map
-    map.on('click', async (e) => {
-
+    map.on('load', () => {
+      // Add terrain layer
+      const sourceId = `mapbox-terrain-source`
+      if (!map.getSource(sourceId)) {
+        map.addSource(sourceId, {
+          type: 'raster-dem',
+          url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+          tileSize: 512,
+          maxzoom: 13,
+        })
+      }
+      map.setTerrain({ source: sourceId, exaggeration: 1.5 })
+    })
+    // // Add click event listener to the map
+    map.on('click', (e) => {
+      setTrajectories([
+        ...trajectoriesRef.current,
+        {
+          id: trajectoriesRef.current.length.toString(), // '0', '1', '2', ...
+          start: e.lngLat,
+          history: [e.lngLat],
+        }
+      ])
       // Add a marker to the map, indicating the clicked location
       const marker = new mapboxgl.Marker()
         .setLngLat(e.lngLat)
         .addTo(map);
-
-      // Start gradient descent
-      const zoom = 13
-      const epsilon = 0.3
-      const maxStep = 10
-      let position: PixelCoord = lngLatToPixel(e.lngLat, zoom)
-      const locationHistory: PixelCoord[] = [{ ...position }]
-      for (let i = 0; i < maxStep; i++) {
-        position = await gradientDescent(position, epsilon)
-        locationHistory.push({ ...position })
-      }
-
-      console.log('TODO: ', locationHistory)
-      // Create markers for each location in the location history
-      locationHistory.map(p => {
-        const lngLat = pixelToLngLat(p)
-        const marker = new mapboxgl.Marker()
-          .setLngLat(lngLat)
-          .addTo(map);
-      })
     })
     setMap(map)
   }, [])
 
-  return map
-}
+  const handlePlay = async () => {
+    if(trajectories.length < 1 || !map) return
 
-function App() {
-  const map = useMapboxMap(options);
+    const execute = async (trajectory: Trajectory) => {
+      let position: PixelCoord = lngLatToPixel(trajectory.start, zoom)
+
+      for (let i = 0; i < maxStep; i++) {
+        position = await gradientDescent(position, epsilon)
+        const lngLat = pixelToLngLat(position)
+        setTrajectories(prevTrajectories => prevTrajectories.map(traj => {
+          if (traj.id === trajectory.id) {
+            return {
+              ...traj,
+              history: [...traj.history, lngLat]
+            }
+          }
+          return traj
+        }))
+        const marker = new mapboxgl.Marker()
+          .setLngLat(lngLat)
+          .addTo(map);
+      }
+    }
+
+    // Start gradient descent
+    setRunning(true)
+    await Promise.all(trajectories.map(traj => execute(traj)))
+    setRunning(false)
+  }
 
   return (
     <div>
+      <IconButton
+        aria-label='play-button'
+        icon={<Icon as={FaPlay} />}
+        isDisabled={!map || trajectories.length < 1 || running}
+        isLoading={running}
+        onClick={handlePlay}
+        position='absolute'
+        boxShadow='md'
+        isRound={true}
+        colorScheme='teal'
+        bottom='8'
+        right='4'
+        zIndex={2}
+      />
       <div id="mapbox-map" />
     </div>
   )

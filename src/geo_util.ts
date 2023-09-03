@@ -31,7 +31,7 @@ export const normalizeLongitude = (deg: number): number => {
 }
 
 // Convert pixel coordinate at specific zoom level to lnglat
-export function pixelToLngLat (pixel: PixelCoord): LngLat {
+export function pixelToLngLat(pixel: PixelCoord): LngLat {
   const L = 85.05112878
   const lat = rad2deg(Math.asin(Math.tanh(
     -(Math.PI * pixel.y / (1 << (pixel.z + 7))) + Math.atanh(Math.sin(deg2rad(L)))
@@ -75,7 +75,10 @@ export const getPixelInTile = (pixel: PixelCoord): { x: number, y: number } => {
 }
 
 const fetchTile = async (tileCoord: TileCoord): Promise<number[][]> => {
-  const url = `https://cyberjapandata.gsi.go.jp/xyz/dem/${tileCoord.z}/${tileCoord.x}/${tileCoord.y}.txt`
+  if (tileCoord.z < 1 || tileCoord.z > 15) {
+    throw new Error('Invalid zoom level')
+  }
+  const url = `https://cyberjapandata.gsi.go.jp/xyz/dem5a/${tileCoord.z}/${tileCoord.x}/${tileCoord.y}.txt`
 
   const text = await fetch(url).then(res => res.text());
   const rows = text.split('\n')
@@ -137,3 +140,21 @@ export const gradientDescent = async (startPixel: PixelCoord, epsilon: number): 
   }
   return nextPixel
 };
+
+// TODO: currently, this class is not used
+export class GradientDescentExecutor {
+  private currentPixel: PixelCoord
+  private epsilon: number
+  private callback: (pixel: PixelCoord) => void
+
+  constructor(startPixel: PixelCoord, epsilon: number, callback: (pixel: PixelCoord) => void) {
+    this.currentPixel = startPixel
+    this.epsilon = epsilon
+    this.callback = callback
+  }
+
+  async execute() {
+    this.currentPixel = await gradientDescent(this.currentPixel, this.epsilon)
+    this.callback(this.currentPixel)
+  }
+}
