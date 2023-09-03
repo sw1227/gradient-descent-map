@@ -20,7 +20,7 @@ const options: MapboxOptions = {
 // Gradient descent options
 const gradientDescentOptions = {
   zoom: 15,
-  epsilon: 1,
+  epsilon: 0.5,
   maxStep: 1000,
 }
 
@@ -55,7 +55,7 @@ function App() {
           maxzoom: 13,
         })
       }
-      map.setTerrain({ source: sourceId, exaggeration: 1.5 })
+      map.setTerrain({ source: sourceId, exaggeration: 1 })
     })
     // // Add click event listener to the map
     map.on('click', (e) => {
@@ -112,8 +112,12 @@ function App() {
           id: layerId,
           type: 'line',
           source: sourceId,
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round',
+          },
           paint: {
-            'line-width': 3,
+            'line-width': 5,
             'line-opacity': 0.8,
             'line-color': [
               'interpolate-hcl',
