@@ -73,25 +73,33 @@ export const getPixelInTile = (pixel: PixelCoord): { x: number, y: number } => {
     y: pixel.y % tileSize
   }
 }
+type TileCache = { [key: string]: number[][] }
 
-const fetchTile = async (tileCoord: TileCoord): Promise<number[][]> => {
+const fetchTile = async (tileCoord: TileCoord, tileCache?: TileCache): Promise<number[][]> => {
   if (tileCoord.z < 1 || tileCoord.z > 15) {
     throw new Error('Invalid zoom level')
   }
   const url = `https://cyberjapandata.gsi.go.jp/xyz/dem5a/${tileCoord.z}/${tileCoord.x}/${tileCoord.y}.txt`
+
+  if (tileCache && (url in tileCache)) {
+    return tileCache[url]
+  }
 
   const text = await fetch(url).then(res => res.text());
   const rows = text.split('\n')
   const tile = rows
     .slice(0, rows.length - 1) // last row is empty
     .map(r => r.split(',').map(d => d === 'e' ? 0 : parseFloat(d))) // e: sea
+  if (tileCache) {
+    tileCache[url] = tile
+  }
   return tile
 }
 
 // Get elevation at given pixel coordinate
-export const getElevation = async (pixelCoord: PixelCoord): Promise<number> => {
+export const getElevation = async (pixelCoord: PixelCoord, tileCache?: TileCache): Promise<number> => {
   const tileCoord = getTileCoordFromPixel(pixelCoord)
-  const tile = await fetchTile(tileCoord)
+  const tile = await fetchTile(tileCoord, tileCache)
   const { x, y } = getPixelInTile(pixelCoord)
   return tile[y][x]
 }
@@ -102,16 +110,16 @@ type Gradient = {
   dy: number
 }
 // Get gradient at given pixel coordinate
-export const getGradient = async (pixelCoord: PixelCoord): Promise<Gradient> => {
+export const getGradient = async (pixelCoord: PixelCoord, tileCache?: TileCache): Promise<Gradient> => {
 
   const fx = Math.floor(pixelCoord.x)
   const fy = Math.floor(pixelCoord.y)
 
   if ((pixelCoord.x - fx) + (pixelCoord.y - fy) < 1) {
     const [nwElev, neElev, swElev] = await Promise.all([
-      getElevation({ x: fx, y: fy, z: pixelCoord.z }),
-      getElevation({ x: fx + 1, y: fy, z: pixelCoord.z }),
-      getElevation({ x: fx, y: fy + 1, z: pixelCoord.z }),
+      getElevation({ x: fx, y: fy, z: pixelCoord.z }, tileCache),
+      getElevation({ x: fx + 1, y: fy, z: pixelCoord.z }, tileCache),
+      getElevation({ x: fx, y: fy + 1, z: pixelCoord.z }, tileCache),
     ])
     return {
       dx: neElev - nwElev,
@@ -119,9 +127,9 @@ export const getGradient = async (pixelCoord: PixelCoord): Promise<Gradient> => 
     }
   } else {
     const [neElev, swElev, seElev] = await Promise.all([
-      getElevation({ x: fx + 1, y: fy, z: pixelCoord.z }),
-      getElevation({ x: fx, y: fy + 1, z: pixelCoord.z }),
-      getElevation({ x: fx + 1, y: fy + 1, z: pixelCoord.z }),
+      getElevation({ x: fx + 1, y: fy, z: pixelCoord.z }, tileCache),
+      getElevation({ x: fx, y: fy + 1, z: pixelCoord.z }, tileCache),
+      getElevation({ x: fx + 1, y: fy + 1, z: pixelCoord.z }, tileCache),
     ])
     return {
       dx: seElev - swElev,
@@ -131,8 +139,8 @@ export const getGradient = async (pixelCoord: PixelCoord): Promise<Gradient> => 
 };
 
 // Get next pixel coordinate by gradient descent
-export const gradientDescent = async (startPixel: PixelCoord, epsilon: number): Promise<PixelCoord> => {
-  const gradient = await getGradient(startPixel)
+export const gradientDescent = async (startPixel: PixelCoord, epsilon: number, tileCache?: TileCache): Promise<PixelCoord> => {
+  const gradient = await getGradient(startPixel, tileCache)
   const nextPixel = {
     x: startPixel.x - epsilon * gradient.dx,
     y: startPixel.y - epsilon * gradient.dy,
@@ -150,6 +158,7 @@ export class GradientDescentExecutor {
     epsilon: number
     zoom: number
   }
+  private tileCache: TileCache
 
   constructor(
     start: LngLat,
@@ -159,11 +168,12 @@ export class GradientDescentExecutor {
     this.currentPixel = lngLatToPixel(start, options.zoom)
     this.options = options
     this.callback = callback
+    this.tileCache = {}
   }
 
   async step() {
     // Update position by gradient descent
-    this.currentPixel = await gradientDescent(this.currentPixel, this.options.epsilon)
+    this.currentPixel = await gradientDescent(this.currentPixel, this.options.epsilon, this.tileCache)
     // Call callback function with new position (in lnglat)
     const lngLat = pixelToLngLat(this.currentPixel)
     this.callback(lngLat)

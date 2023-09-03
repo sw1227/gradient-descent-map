@@ -19,7 +19,7 @@ const options: MapboxOptions = {
 const gradientDescentOptions = {
   zoom: 15,
   epsilon: 1,
-  maxStep: 100,
+  maxStep: 500,
 }
 
 type Trajectory = {
