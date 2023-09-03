@@ -1,3 +1,5 @@
+import { LRUCache } from 'lru-cache'
+
 // Tile: 256 x 256 pixels
 export const tileSize = 256
 
@@ -73,26 +75,24 @@ export const getPixelInTile = (pixel: PixelCoord): { x: number, y: number } => {
     y: pixel.y % tileSize
   }
 }
-type TileCache = { [key: string]: number[][] }
 
+type TileCache = LRUCache<string, number[][]>
 const fetchTile = async (tileCoord: TileCoord, tileCache?: TileCache): Promise<number[][]> => {
   if (tileCoord.z < 1 || tileCoord.z > 15) {
     throw new Error('Invalid zoom level')
   }
   const url = `https://cyberjapandata.gsi.go.jp/xyz/dem5a/${tileCoord.z}/${tileCoord.x}/${tileCoord.y}.txt`
 
-  if (tileCache && (url in tileCache)) {
-    return tileCache[url]
-  }
+  const cached = tileCache?.get(url)
+  if (cached) return cached
 
   const text = await fetch(url).then(res => res.text());
   const rows = text.split('\n')
   const tile = rows
     .slice(0, rows.length - 1) // last row is empty
     .map(r => r.split(',').map(d => d === 'e' ? 0 : parseFloat(d))) // e: sea
-  if (tileCache) {
-    tileCache[url] = tile
-  }
+
+  tileCache?.set(url, tile)
   return tile
 }
 
@@ -158,7 +158,7 @@ export class GradientDescentExecutor {
     epsilon: number
     zoom: number
   }
-  private tileCache: TileCache
+  private tileCache: LRUCache<string, number[][]>
 
   constructor(
     start: LngLat,
@@ -168,7 +168,7 @@ export class GradientDescentExecutor {
     this.currentPixel = lngLatToPixel(start, options.zoom)
     this.options = options
     this.callback = callback
-    this.tileCache = {}
+    this.tileCache = new LRUCache<string, number[][]>({ max: 1000 })
   }
 
   async step() {
