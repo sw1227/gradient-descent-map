@@ -141,20 +141,31 @@ export const gradientDescent = async (startPixel: PixelCoord, epsilon: number): 
   return nextPixel
 };
 
-// TODO: currently, this class is not used
-export class GradientDescentExecutor {
-  private currentPixel: PixelCoord
-  private epsilon: number
-  private callback: (pixel: PixelCoord) => void
+// Execute gradient descent
 
-  constructor(startPixel: PixelCoord, epsilon: number, callback: (pixel: PixelCoord) => void) {
-    this.currentPixel = startPixel
-    this.epsilon = epsilon
+export class GradientDescentExecutor {
+  private currentPixel: PixelCoord // Internally, this class holds current position in pixel coordinate
+  private callback: (pos: LngLat) => void // called with the new position when each step is finished
+  private options: {
+    epsilon: number
+    zoom: number
+  }
+
+  constructor(
+    start: LngLat,
+    options: { epsilon: number; zoom: number },
+    callback: (pos: LngLat) => void,
+  ) {
+    this.currentPixel = lngLatToPixel(start, options.zoom)
+    this.options = options
     this.callback = callback
   }
 
-  async execute() {
-    this.currentPixel = await gradientDescent(this.currentPixel, this.epsilon)
-    this.callback(this.currentPixel)
+  async step() {
+    // Update position by gradient descent
+    this.currentPixel = await gradientDescent(this.currentPixel, this.options.epsilon)
+    // Call callback function with new position (in lnglat)
+    const lngLat = pixelToLngLat(this.currentPixel)
+    this.callback(lngLat)
   }
 }

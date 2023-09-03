@@ -4,7 +4,7 @@ import { IconButton } from '@chakra-ui/react'
 import { Icon } from '@chakra-ui/react'
 import { FaPlay } from 'react-icons/fa'
 import './App.css'
-import { lngLatToPixel, gradientDescent, PixelCoord, pixelToLngLat, LngLat } from './geo_util'
+import { LngLat, GradientDescentExecutor } from './geo_util'
 
 const options: MapboxOptions = {
   accessToken: import.meta.env.VITE_MAPBOX_TOKEN,
@@ -132,21 +132,24 @@ function App() {
     if(trajectories.length < 1 || !map) return
 
     const execute = async (trajectory: Trajectory) => {
-      const lastPosition = trajectory.history[trajectory.history.length - 1]
-      let position: PixelCoord = lngLatToPixel(lastPosition, gradientDescentOptions.zoom)
+      const executor = new GradientDescentExecutor(
+        trajectory.history[trajectory.history.length - 1], // Continue from the last position
+        gradientDescentOptions,
+        pos => {
+          setTrajectories(prevTrajectories => prevTrajectories.map(traj => {
+            if (traj.id === trajectory.id) {
+              return {
+                ...traj,
+                history: [...traj.history, pos]
+              }
+            }
+            return traj
+          }))
+        },
+      )
 
       for (let i = 0; i < gradientDescentOptions.maxStep; i++) {
-        position = await gradientDescent(position, gradientDescentOptions.epsilon)
-        const lngLat = pixelToLngLat(position)
-        setTrajectories(prevTrajectories => prevTrajectories.map(traj => {
-          if (traj.id === trajectory.id) {
-            return {
-              ...traj,
-              history: [...traj.history, lngLat]
-            }
-          }
-          return traj
-        }))
+        await executor.step()
       }
     }
 
